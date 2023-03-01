@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
 	"log"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
@@ -19,10 +19,10 @@ func main() {
 
 		body["type"] = "echo_ok"
 
-		if replyTo, ok := body["in_reply_to"]; ok {
+		if replyTo, ok := body["msg_id"]; ok {
 			body["in_reply_to"] = replyTo
 		} else {
-			return errors.New("missing msg_id")
+			return fmt.Errorf("missing msg_id in body: %s", body)
 		}
 
 		return n.Reply(msg, body)
