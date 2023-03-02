@@ -17,8 +17,13 @@ func main() {
 			return err
 		}
 
+		id, err := uuid.NewRandom()
+		if err != nil {
+			return err
+		}
+
 		body["type"] = "generate_ok"
-		body["id"] = uuid.New().String()
+		body["id"] = id
 
 		return n.Reply(msg, body)
 	})
