@@ -16,7 +16,7 @@ type Broadcast struct {
 	Propogate          bool
 	Partitionable      bool
 	topology           map[string][]string
-	receivedBroadcasts []float64
+	receivedBroadcasts map[float64]struct{}
 }
 
 type topologyBody struct {
@@ -82,20 +82,23 @@ func (h *Broadcast) recordBroadcast(broadcast float64) {
 	h.BroadcastMu.Lock()
 	defer h.BroadcastMu.Unlock()
 
-	for _, received := range h.receivedBroadcasts {
-		if received == broadcast {
-			return
-		}
+	if h.receivedBroadcasts == nil {
+		h.receivedBroadcasts = map[float64]struct{}{}
 	}
 
-	h.receivedBroadcasts = append(h.receivedBroadcasts, broadcast)
+	h.receivedBroadcasts[broadcast] = struct{}{}
 }
 
 func (h *Broadcast) readBroadcasts() []float64 {
 	h.BroadcastMu.Lock()
 	defer h.BroadcastMu.Unlock()
 
-	return h.receivedBroadcasts
+	received := []float64{}
+	for k := range h.receivedBroadcasts {
+		received = append(received, k)
+	}
+
+	return received
 }
 
 func (h *Broadcast) recordTopology(topology map[string][]string) {
