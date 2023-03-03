@@ -2,4 +2,7 @@
 set -e
 
 go build -o bin/maelstrom-fault-tolerant-broadcast ./cmd/fault-tolerant-broadcast/main.go
+# Should pass multi-node broadcast test before we attempt adding a partition
+./bin/maelstrom/maelstrom test -w broadcast --bin bin/maelstrom-fault-tolerant-broadcast --node-count 5 --time-limit 20 --rate 10
+
 ./bin/maelstrom/maelstrom test -w broadcast --bin bin/maelstrom-fault-tolerant-broadcast --node-count 5 --time-limit 20 --rate 10 --nemesis partition

@@ -14,3 +14,5 @@
 maelstrom/
 bin/maelstrom-*
 store/
+
+*.txt
