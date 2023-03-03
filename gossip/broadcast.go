@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
@@ -11,7 +12,10 @@ import (
 
 type Broadcast struct {
 	Node               *maelstrom.Node
-	Mutex              *sync.Mutex
+	BroadcastMu        *sync.Mutex
+	TopologyMu         *sync.Mutex
+	Propogate          bool
+	topology           map[string][]string
 	receivedBroadcasts []float64
 }
 
@@ -26,12 +30,7 @@ func (h *Broadcast) HandleTopology(msg maelstrom.Message) error {
 		return err
 	}
 
-	nodeIDs := h.Node.NodeIDs()
-	for _, nodeID := range nodeIDs {
-		if _, ok := body.Topology[nodeID]; !ok {
-			return errors.New("topology is missing node " + nodeID)
-		}
-	}
+	h.recordTopology(body.Topology)
 
 	return h.Node.Reply(msg, map[string]any{"type": "topology_ok"})
 }
@@ -65,17 +64,51 @@ func (h *Broadcast) HandleBroadcast(msg maelstrom.Message) error {
 
 	h.recordBroadcast(messageNumber)
 
+	if h.Propogate {
+		topology := h.readTopology()
+		for _, peer := range topology[msg.Dest] {
+			if peer != msg.Src {
+				err := h.Node.Send(peer, body)
+				if err != nil {
+					log.Println(err)
+				}
+			}
+		}
+	}
+
 	return h.Node.Reply(msg, map[string]any{"type": "broadcast_ok"})
 }
 
 func (h *Broadcast) recordBroadcast(broadcast float64) {
-	h.Mutex.Lock()
-	defer h.Mutex.Unlock()
+	h.BroadcastMu.Lock()
+	defer h.BroadcastMu.Unlock()
+
+	for _, received := range h.receivedBroadcasts {
+		if received == broadcast {
+			return
+		}
+	}
+
 	h.receivedBroadcasts = append(h.receivedBroadcasts, broadcast)
 }
 
 func (h *Broadcast) readBroadcasts() []float64 {
-	h.Mutex.Lock()
-	defer h.Mutex.Unlock()
+	h.BroadcastMu.Lock()
+	defer h.BroadcastMu.Unlock()
+
 	return h.receivedBroadcasts
+}
+
+func (h *Broadcast) recordTopology(topology map[string][]string) {
+	h.TopologyMu.Lock()
+	defer h.TopologyMu.Unlock()
+
+	h.topology = topology
+}
+
+func (h *Broadcast) readTopology() map[string][]string {
+	h.TopologyMu.Lock()
+	defer h.TopologyMu.Unlock()
+
+	return h.topology
 }

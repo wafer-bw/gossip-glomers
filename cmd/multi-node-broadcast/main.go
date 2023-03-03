@@ -14,6 +14,7 @@ func main() {
 	broadcast := gossip.Broadcast{
 		BroadcastMu: &sync.Mutex{},
 		TopologyMu:  &sync.Mutex{},
+		Propogate:   true,
 		Node:        n,
 	}
 

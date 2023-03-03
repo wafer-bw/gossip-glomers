@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+
+go build -o bin/maelstrom-multi-node-broadcast ./cmd/multi-node-broadcast/main.go
+./bin/maelstrom/maelstrom test -w broadcast --bin bin/maelstrom-multi-node-broadcast --node-count 5 --time-limit 20 --rate 10
