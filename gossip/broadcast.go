@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
@@ -15,6 +14,7 @@ type Broadcast struct {
 	BroadcastMu        *sync.Mutex
 	TopologyMu         *sync.Mutex
 	Propogate          bool
+	Partitionable      bool
 	topology           map[string][]string
 	receivedBroadcasts []float64
 }
@@ -67,11 +67,15 @@ func (h *Broadcast) HandleBroadcast(msg maelstrom.Message) error {
 	if h.Propogate {
 		topology := h.readTopology()
 		for _, peer := range topology[msg.Dest] {
-			if peer != msg.Src {
-				err := h.Node.Send(peer, body)
-				if err != nil {
-					log.Println(err)
-				}
+			if peer == msg.Src {
+				continue
+			}
+
+			if h.Partitionable {
+				// TODO:
+				// err := h.Node.RPC(peer, body, HANDLER)
+			} else {
+				_ = h.Node.Send(peer, body)
 			}
 		}
 	}
