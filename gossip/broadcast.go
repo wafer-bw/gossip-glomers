@@ -66,17 +66,12 @@ func (h *Broadcast) HandleBroadcast(msg maelstrom.Message) error {
 
 	if h.Propogate {
 		topology := h.readTopology()
-		for _, peer := range topology[msg.Dest] {
+		for _, peer := range topology[h.Node.ID()] {
 			if peer == msg.Src {
 				continue
 			}
 
-			if h.Partitionable {
-				// TODO:
-				// err := h.Node.RPC(peer, body, HANDLER)
-			} else {
-				_ = h.Node.Send(peer, body)
-			}
+			_ = h.Node.Send(peer, body)
 		}
 	}
 
