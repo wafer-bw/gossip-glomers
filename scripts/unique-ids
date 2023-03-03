@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+
+go build -o bin/maelstrom-unique-ids ./cmd/unique-ids/main.go
+./bin/maelstrom/maelstrom test -w unique-ids --bin bin/maelstrom-unique-ids --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition

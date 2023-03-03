@@ -1,6 +1,5 @@
 #!/bin/sh
 set -e
 
-go install ./maelstrom-broadcast
-cd maelstrom
-./maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast --node-count 1 --time-limit 20 --rate 10
+go build -o bin/maelstrom-single-node-broadcast ./cmd/single-node-broadcast/main.go
+./bin/maelstrom/maelstrom test -w broadcast --bin bin/maelstrom-single-node-broadcast --node-count 1 --time-limit 20 --rate 10

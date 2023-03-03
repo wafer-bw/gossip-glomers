@@ -1,6 +1,5 @@
 #!/bin/sh
 set -e
 
-go install ./maelstrom-echo
-cd maelstrom
-./maelstrom test -w echo --bin $GOBIN/maelstrom-echo --node-count 1 --time-limit 10
+go build -o bin/maelstrom-echo ./cmd/echo/main.go
+./bin/maelstrom/maelstrom test -w echo --bin bin/maelstrom-echo --node-count 1 --time-limit 10
