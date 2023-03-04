@@ -1,10 +1,12 @@
 package gossip
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
@@ -34,6 +36,13 @@ func (h *FaultTolerantBroadcast) HandleTopology(msg maelstrom.Message) error {
 	}
 
 	h.recordTopology(body.Topology)
+
+	h.Log.Info(
+		"read topology",
+		slog.String("id", h.Node.ID()),
+		slog.String("topo", fmt.Sprintf("%+v", body.Topology)),
+		slog.String("unbroadcasted", fmt.Sprintf("%+v", h.unbroadcasted)),
+	)
 
 	return h.Node.Reply(msg, map[string]any{"type": "topology_ok"})
 }
@@ -69,36 +78,7 @@ func (h *FaultTolerantBroadcast) HandleBroadcast(msg maelstrom.Message) error {
 		return h.Node.Reply(msg, map[string]any{"type": "broadcast_ok"})
 	}
 
-	uid := uuid.New().String()
-	for _, peer := range h.readTopology()[h.Node.ID()] {
-		if peer == msg.Src {
-			continue
-		}
-		broadcast := broadcastMsg{dst: peer, uid: uid, body: body}
-		h.addUnbroadcasted(broadcast.dst, broadcast.uid, broadcast.body)
-		if err := h.Node.RPC(broadcast.dst, broadcast.body, func(msg maelstrom.Message) error {
-			body := map[string]any{}
-			if err := json.Unmarshal(msg.Body, &body); err != nil {
-				return err
-			}
-
-			if body["type"] != "broadcast_ok" {
-				return errors.New("unexpected response")
-			}
-
-			h.Log.Info(
-				"broadcast ok",
-				slog.String("src", h.Node.ID()),
-				slog.String("dst", broadcast.dst),
-				slog.String("uid", broadcast.uid),
-				slog.String("body", fmt.Sprintf("%.0f", messageNumber)),
-			)
-			h.removeUnbroadcasted(broadcast.uid)
-			return nil
-		}); err != nil {
-			return err
-		}
-	}
+	h.doBroadcasting(msg, body)
 
 	return h.Node.Reply(msg, map[string]any{"type": "broadcast_ok"})
 }
@@ -142,11 +122,18 @@ func (h *FaultTolerantBroadcast) addUnbroadcasted(dst, uid string, body map[stri
 	h.unbroadcasted[uid] = broadcastMsg{dst: dst, body: body}
 }
 
-func (h *FaultTolerantBroadcast) removeUnbroadcasted(uid string) {
+func (h *FaultTolerantBroadcast) removeUnbroadcasted(uid string) (broadcastMsg, bool) {
 	h.BroadcastMu.Lock()
 	defer h.BroadcastMu.Unlock()
 
+	broadcast, ok := h.unbroadcasted[uid]
+	if !ok {
+		return broadcastMsg{}, false
+	}
+
 	delete(h.unbroadcasted, uid)
+
+	return broadcast, true
 }
 
 func (h *FaultTolerantBroadcast) readUnbroadcasted() map[string]broadcastMsg {
@@ -170,19 +157,40 @@ func (h *FaultTolerantBroadcast) readTopology() map[string][]string {
 	return h.topology
 }
 
-func (h *FaultTolerantBroadcast) broadcastReceived(msg maelstrom.Message, err error) (bool, error) {
-	if err != nil {
-		return false, err
-	}
+func (h *FaultTolerantBroadcast) doBroadcasting(msg maelstrom.Message, body map[string]any) {
+	uid := uuid.New().String()
+	for _, peer := range h.readTopology()[h.Node.ID()] {
+		if peer == msg.Src {
+			continue
+		}
+		broadcast := broadcastMsg{dst: peer, uid: uid, body: body}
 
-	body := map[string]any{}
-	if err := json.Unmarshal(msg.Body, &body); err != nil {
-		return false, err
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		_, err := h.Node.SyncRPC(ctx, broadcast.dst, broadcast.body)
+		if err != nil {
+			h.Log.Info(fmt.Sprintf("%s failed to broadcast to %s", h.Node.ID(), broadcast.dst))
+			go h.rebroadcast(broadcast)
+		}
+		cancel()
 	}
+}
 
-	if body["type"] == "broadcast_ok" {
-		return true, nil
+func (h *FaultTolerantBroadcast) rebroadcast(broadcast broadcastMsg) {
+	retry := 0
+	maxRetry := 100
+	for {
+		time.Sleep(500 * time.Millisecond)
+		retry++
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		_, err := h.Node.SyncRPC(ctx, broadcast.dst, broadcast.body)
+		cancel()
+		if err == nil {
+			h.Log.Info(fmt.Sprintf("%s rebroadcasted %+v to %s after %d attempts", h.Node.ID(), broadcast.body, broadcast.dst, retry))
+			return
+		}
+		if retry > maxRetry {
+			h.Log.Info(fmt.Sprintf("%s failed to rebroadcast %+v to %s after %d attempts", h.Node.ID(), broadcast.body, broadcast.dst, retry))
+			return
+		}
 	}
-
-	return false, errors.New("received unknown body type")
 }
