@@ -1,20 +1,23 @@
 package gossip
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
+	"github.com/google/uuid"
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
+	"golang.org/x/exp/slog"
 )
 
-type Broadcast struct {
+type FaultTolerantBroadcast struct {
 	Node               *maelstrom.Node
 	BroadcastMu        *sync.Mutex
 	TopologyMu         *sync.Mutex
-	Propogate          bool
-	Partitionable      bool
+	Log                *slog.Logger
 	topology           map[string][]string
 	receivedBroadcasts map[float64]struct{}
 }
@@ -24,7 +27,13 @@ type topologyBody struct {
 	Topology map[string][]string `json:"topology"`
 }
 
-func (h *Broadcast) HandleTopology(msg maelstrom.Message) error {
+type broadcastMsg struct {
+	uid  string
+	dst  string
+	body map[string]any
+}
+
+func (h *FaultTolerantBroadcast) HandleTopology(msg maelstrom.Message) error {
 	body := topologyBody{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
@@ -32,21 +41,27 @@ func (h *Broadcast) HandleTopology(msg maelstrom.Message) error {
 
 	h.recordTopology(body.Topology)
 
+	h.Log.Info(
+		"read topology",
+		slog.String("id", h.Node.ID()),
+		slog.String("topo", fmt.Sprintf("%+v", body.Topology)),
+	)
+
 	return h.Node.Reply(msg, map[string]any{"type": "topology_ok"})
 }
 
-func (h *Broadcast) HandleRead(msg maelstrom.Message) error {
+func (h *FaultTolerantBroadcast) HandleRead(msg maelstrom.Message) error {
 	body := map[string]any{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
 	}
 
-	received := h.readBroadcasts()
+	received := h.readBroadcastsReceived()
 
 	return h.Node.Reply(msg, map[string]any{"type": "read_ok", "messages": received})
 }
 
-func (h *Broadcast) HandleBroadcast(msg maelstrom.Message) error {
+func (h *FaultTolerantBroadcast) HandleBroadcast(msg maelstrom.Message) error {
 	body := map[string]any{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
@@ -62,26 +77,16 @@ func (h *Broadcast) HandleBroadcast(msg maelstrom.Message) error {
 		return fmt.Errorf("message is not a float: %s", body["message"])
 	}
 
-	alreadyReceived := h.recordBroadcast(messageNumber)
-	if alreadyReceived {
+	if alreadyReceived := h.recordBroadcast(msg.Src, messageNumber); alreadyReceived {
 		return h.Node.Reply(msg, map[string]any{"type": "broadcast_ok"})
 	}
 
-	if h.Propogate {
-		topology := h.readTopology()
-		for _, peer := range topology[h.Node.ID()] {
-			if peer == msg.Src {
-				continue
-			}
-
-			_ = h.Node.Send(peer, body)
-		}
-	}
+	h.doBroadcasting(msg, body)
 
 	return h.Node.Reply(msg, map[string]any{"type": "broadcast_ok"})
 }
 
-func (h *Broadcast) recordBroadcast(broadcast float64) bool {
+func (h *FaultTolerantBroadcast) recordBroadcast(src string, value float64) bool {
 	h.BroadcastMu.Lock()
 	defer h.BroadcastMu.Unlock()
 
@@ -89,15 +94,15 @@ func (h *Broadcast) recordBroadcast(broadcast float64) bool {
 		h.receivedBroadcasts = map[float64]struct{}{}
 	}
 
-	if _, ok := h.receivedBroadcasts[broadcast]; ok {
+	if _, ok := h.receivedBroadcasts[value]; ok {
 		return true
 	}
 
-	h.receivedBroadcasts[broadcast] = struct{}{}
+	h.receivedBroadcasts[value] = struct{}{}
 	return false
 }
 
-func (h *Broadcast) readBroadcasts() []float64 {
+func (h *FaultTolerantBroadcast) readBroadcastsReceived() []float64 {
 	h.BroadcastMu.Lock()
 	defer h.BroadcastMu.Unlock()
 
@@ -109,16 +114,54 @@ func (h *Broadcast) readBroadcasts() []float64 {
 	return received
 }
 
-func (h *Broadcast) recordTopology(topology map[string][]string) {
+func (h *FaultTolerantBroadcast) recordTopology(topology map[string][]string) {
 	h.TopologyMu.Lock()
 	defer h.TopologyMu.Unlock()
 
 	h.topology = topology
 }
 
-func (h *Broadcast) readTopology() map[string][]string {
+func (h *FaultTolerantBroadcast) readTopology() map[string][]string {
 	h.TopologyMu.Lock()
 	defer h.TopologyMu.Unlock()
 
 	return h.topology
+}
+
+func (h *FaultTolerantBroadcast) doBroadcasting(msg maelstrom.Message, body map[string]any) {
+	uid := uuid.New().String()
+	for _, peer := range h.readTopology()[h.Node.ID()] {
+		if peer == msg.Src {
+			continue
+		}
+		broadcast := broadcastMsg{dst: peer, uid: uid, body: body}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		_, err := h.Node.SyncRPC(ctx, broadcast.dst, broadcast.body)
+		if err != nil {
+			h.Log.Info(fmt.Sprintf("%s failed to broadcast to %s", h.Node.ID(), broadcast.dst))
+			go h.rebroadcast(broadcast)
+		}
+		cancel()
+	}
+}
+
+func (h *FaultTolerantBroadcast) rebroadcast(broadcast broadcastMsg) {
+	retry := 0
+	maxRetry := 100
+	for {
+		time.Sleep(500 * time.Millisecond)
+		retry++
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		_, err := h.Node.SyncRPC(ctx, broadcast.dst, broadcast.body)
+		cancel()
+		if err == nil {
+			h.Log.Info(fmt.Sprintf("%s rebroadcasted %+v to %s after %d attempts", h.Node.ID(), broadcast.body, broadcast.dst, retry))
+			return
+		}
+		if retry > maxRetry {
+			h.Log.Info(fmt.Sprintf("%s failed to rebroadcast %+v to %s after %d attempts", h.Node.ID(), broadcast.body, broadcast.dst, retry))
+			return
+		}
+	}
 }
