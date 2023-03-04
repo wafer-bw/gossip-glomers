@@ -1,14 +1,12 @@
 package gossip
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gossip-glomers/tools/stack"
 	"sync"
-	"time"
 
+	"github.com/google/uuid"
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 	"golang.org/x/exp/slog"
 )
@@ -20,10 +18,11 @@ type FaultTolerantBroadcast struct {
 	Log                *slog.Logger
 	topology           map[string][]string
 	receivedBroadcasts map[float64]struct{}
-	unbroadcasted      []broadcastMsg
+	unbroadcasted      map[string]broadcastMsg
 }
 
 type broadcastMsg struct {
+	uid  string
 	dst  string
 	body map[string]any
 }
@@ -65,25 +64,46 @@ func (h *FaultTolerantBroadcast) HandleBroadcast(msg maelstrom.Message) error {
 	if !ok {
 		return fmt.Errorf("message is not a float: %s", body["message"])
 	}
-	h.recordBroadcast(msg.Src, body, messageNumber)
 
+	if alreadyReceived := h.recordBroadcast(msg.Src, messageNumber); alreadyReceived {
+		return h.Node.Reply(msg, map[string]any{"type": "broadcast_ok"})
+	}
+
+	uid := uuid.New().String()
 	for _, peer := range h.readTopology()[h.Node.ID()] {
 		if peer == msg.Src {
 			continue
 		}
-		broadcast := broadcastMsg{dst: peer, body: body}
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		if _, err := h.Node.SyncRPC(ctx, broadcast.dst, broadcast.body); err != nil {
-			h.Log.Info(fmt.Sprintf("broadcast to %s with body %+v failed due to: %s", broadcast.dst, broadcast.body, err))
-			h.pushUnbroadcasted(broadcast)
+		broadcast := broadcastMsg{dst: peer, uid: uid, body: body}
+		h.addUnbroadcasted(broadcast.dst, broadcast.uid, broadcast.body)
+		if err := h.Node.RPC(broadcast.dst, broadcast.body, func(msg maelstrom.Message) error {
+			body := map[string]any{}
+			if err := json.Unmarshal(msg.Body, &body); err != nil {
+				return err
+			}
+
+			if body["type"] != "broadcast_ok" {
+				return errors.New("unexpected response")
+			}
+
+			h.Log.Info(
+				"broadcast ok",
+				slog.String("src", h.Node.ID()),
+				slog.String("dst", broadcast.dst),
+				slog.String("uid", broadcast.uid),
+				slog.String("body", fmt.Sprintf("%.0f", messageNumber)),
+			)
+			h.removeUnbroadcasted(broadcast.uid)
+			return nil
+		}); err != nil {
+			return err
 		}
-		cancel()
 	}
 
 	return h.Node.Reply(msg, map[string]any{"type": "broadcast_ok"})
 }
 
-func (h *FaultTolerantBroadcast) recordBroadcast(src string, body map[string]any, value float64) {
+func (h *FaultTolerantBroadcast) recordBroadcast(src string, value float64) bool {
 	h.BroadcastMu.Lock()
 	defer h.BroadcastMu.Unlock()
 
@@ -91,7 +111,12 @@ func (h *FaultTolerantBroadcast) recordBroadcast(src string, body map[string]any
 		h.receivedBroadcasts = map[float64]struct{}{}
 	}
 
+	if _, ok := h.receivedBroadcasts[value]; ok {
+		return true
+	}
+
 	h.receivedBroadcasts[value] = struct{}{}
+	return false
 }
 
 func (h *FaultTolerantBroadcast) readBroadcastsReceived() []float64 {
@@ -106,7 +131,25 @@ func (h *FaultTolerantBroadcast) readBroadcastsReceived() []float64 {
 	return received
 }
 
-func (h *FaultTolerantBroadcast) readUnbroadcasted() []broadcastMsg {
+func (h *FaultTolerantBroadcast) addUnbroadcasted(dst, uid string, body map[string]any) {
+	h.BroadcastMu.Lock()
+	defer h.BroadcastMu.Unlock()
+
+	if h.unbroadcasted == nil {
+		h.unbroadcasted = map[string]broadcastMsg{}
+	}
+
+	h.unbroadcasted[uid] = broadcastMsg{dst: dst, body: body}
+}
+
+func (h *FaultTolerantBroadcast) removeUnbroadcasted(uid string) {
+	h.BroadcastMu.Lock()
+	defer h.BroadcastMu.Unlock()
+
+	delete(h.unbroadcasted, uid)
+}
+
+func (h *FaultTolerantBroadcast) readUnbroadcasted() map[string]broadcastMsg {
 	h.BroadcastMu.Lock()
 	defer h.BroadcastMu.Unlock()
 
@@ -142,26 +185,4 @@ func (h *FaultTolerantBroadcast) broadcastReceived(msg maelstrom.Message, err er
 	}
 
 	return false, errors.New("received unknown body type")
-}
-
-func (h *FaultTolerantBroadcast) pushUnbroadcasted(broadcast broadcastMsg) {
-	h.BroadcastMu.Lock()
-	defer h.BroadcastMu.Unlock()
-
-	stack.Push(&h.unbroadcasted, broadcast)
-}
-
-func (h *FaultTolerantBroadcast) Blaster(ctx context.Context) {
-	// So anyway, I started blasting.
-	for _, peer := range h.readTopology()[h.Node.ID()] {
-		for _, broadcast := range h.readUnbroadcasted() {
-			if ctx.Err() != nil {
-				return
-			}
-			if peer != broadcast.dst {
-				continue
-			}
-			_ = h.Node.Send(broadcast.dst, broadcast.body)
-		}
-	}
 }

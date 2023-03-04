@@ -62,7 +62,10 @@ func (h *Broadcast) HandleBroadcast(msg maelstrom.Message) error {
 		return fmt.Errorf("message is not a float: %s", body["message"])
 	}
 
-	h.recordBroadcast(messageNumber)
+	alreadyReceived := h.recordBroadcast(messageNumber)
+	if alreadyReceived {
+		return h.Node.Reply(msg, map[string]any{"type": "broadcast_ok"})
+	}
 
 	if h.Propogate {
 		topology := h.readTopology()
@@ -78,7 +81,7 @@ func (h *Broadcast) HandleBroadcast(msg maelstrom.Message) error {
 	return h.Node.Reply(msg, map[string]any{"type": "broadcast_ok"})
 }
 
-func (h *Broadcast) recordBroadcast(broadcast float64) {
+func (h *Broadcast) recordBroadcast(broadcast float64) bool {
 	h.BroadcastMu.Lock()
 	defer h.BroadcastMu.Unlock()
 
@@ -86,7 +89,12 @@ func (h *Broadcast) recordBroadcast(broadcast float64) {
 		h.receivedBroadcasts = map[float64]struct{}{}
 	}
 
+	if _, ok := h.receivedBroadcasts[broadcast]; ok {
+		return true
+	}
+
 	h.receivedBroadcasts[broadcast] = struct{}{}
+	return false
 }
 
 func (h *Broadcast) readBroadcasts() []float64 {

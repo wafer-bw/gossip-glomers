@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"sync"
@@ -16,8 +15,8 @@ import (
 func main() {
 	n := maelstrom.NewNode()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// ctx, cancel := context.WithCancel(context.Background())
+	// defer cancel()
 
 	// TODO: make this path come from an env var
 	logDst, err := os.Create(fmt.Sprintf("/Users/bwakeford/Documents/dev/gossip-glomers/log/%s-log.txt", uuid.New().String()))
@@ -37,8 +36,6 @@ func main() {
 	n.Handle(string(gossip.HandleTypeTopology), broadcast.HandleTopology)
 	n.Handle(string(gossip.HandleTypeRead), broadcast.HandleRead)
 	n.Handle(string(gossip.HandleTypeBroadcast), broadcast.HandleBroadcast)
-
-	go broadcast.Blaster(ctx)
 
 	if err := n.Run(); err != nil {
 		panic(err)
