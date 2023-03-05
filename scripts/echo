@@ -1,5 +1,7 @@
 #!/bin/sh
 set -e
 
-go build -o bin/maelstrom-echo ./cmd/echo/main.go
-./bin/maelstrom/maelstrom test -w echo --bin bin/maelstrom-echo --node-count 1 --time-limit 10
+./scripts/build
+./scripts/cleanup
+
+./bin/maelstrom/maelstrom test -w echo --bin bin/gossip-glomers --node-count 1 --time-limit 10

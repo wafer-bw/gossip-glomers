@@ -13,7 +13,7 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-type FaultTolerantBroadcast struct {
+type Broadcast struct {
 	Node               *maelstrom.Node
 	BroadcastMu        *sync.Mutex
 	TopologyMu         *sync.Mutex
@@ -33,7 +33,7 @@ type broadcastMsg struct {
 	body map[string]any
 }
 
-func (h *FaultTolerantBroadcast) HandleTopology(msg maelstrom.Message) error {
+func (h *Broadcast) HandleTopology(msg maelstrom.Message) error {
 	body := topologyBody{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
@@ -50,7 +50,7 @@ func (h *FaultTolerantBroadcast) HandleTopology(msg maelstrom.Message) error {
 	return h.Node.Reply(msg, map[string]any{"type": "topology_ok"})
 }
 
-func (h *FaultTolerantBroadcast) HandleRead(msg maelstrom.Message) error {
+func (h *Broadcast) HandleRead(msg maelstrom.Message) error {
 	body := map[string]any{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
@@ -61,7 +61,7 @@ func (h *FaultTolerantBroadcast) HandleRead(msg maelstrom.Message) error {
 	return h.Node.Reply(msg, map[string]any{"type": "read_ok", "messages": received})
 }
 
-func (h *FaultTolerantBroadcast) HandleBroadcast(msg maelstrom.Message) error {
+func (h *Broadcast) HandleBroadcast(msg maelstrom.Message) error {
 	body := map[string]any{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
@@ -86,7 +86,7 @@ func (h *FaultTolerantBroadcast) HandleBroadcast(msg maelstrom.Message) error {
 	return h.Node.Reply(msg, map[string]any{"type": "broadcast_ok"})
 }
 
-func (h *FaultTolerantBroadcast) recordBroadcast(src string, value float64) bool {
+func (h *Broadcast) recordBroadcast(src string, value float64) bool {
 	h.BroadcastMu.Lock()
 	defer h.BroadcastMu.Unlock()
 
@@ -102,7 +102,7 @@ func (h *FaultTolerantBroadcast) recordBroadcast(src string, value float64) bool
 	return false
 }
 
-func (h *FaultTolerantBroadcast) readBroadcastsReceived() []float64 {
+func (h *Broadcast) readBroadcastsReceived() []float64 {
 	h.BroadcastMu.Lock()
 	defer h.BroadcastMu.Unlock()
 
@@ -114,21 +114,21 @@ func (h *FaultTolerantBroadcast) readBroadcastsReceived() []float64 {
 	return received
 }
 
-func (h *FaultTolerantBroadcast) recordTopology(topology map[string][]string) {
+func (h *Broadcast) recordTopology(topology map[string][]string) {
 	h.TopologyMu.Lock()
 	defer h.TopologyMu.Unlock()
 
 	h.topology = topology
 }
 
-func (h *FaultTolerantBroadcast) readTopology() map[string][]string {
+func (h *Broadcast) readTopology() map[string][]string {
 	h.TopologyMu.Lock()
 	defer h.TopologyMu.Unlock()
 
 	return h.topology
 }
 
-func (h *FaultTolerantBroadcast) doBroadcasting(msg maelstrom.Message, body map[string]any) {
+func (h *Broadcast) doBroadcasting(msg maelstrom.Message, body map[string]any) {
 	uid := uuid.New().String()
 	for _, peer := range h.readTopology()[h.Node.ID()] {
 		if peer == msg.Src {
@@ -146,7 +146,7 @@ func (h *FaultTolerantBroadcast) doBroadcasting(msg maelstrom.Message, body map[
 	}
 }
 
-func (h *FaultTolerantBroadcast) rebroadcast(broadcast broadcastMsg) {
+func (h *Broadcast) rebroadcast(broadcast broadcastMsg) {
 	retry := 0
 	maxRetry := 100
 	for {

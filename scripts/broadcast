@@ -1,13 +1,13 @@
 #!/bin/sh
 set -e
 
-go build -o bin/maelstrom-broadcast ./cmd/broadcast/main.go
+./scripts/build
 
-rm -r ./log/*.txt
-./bin/maelstrom/maelstrom test -w broadcast --bin bin/maelstrom-broadcast --node-count 1 --time-limit 20 --rate 10
+# ./scripts/cleanup
+# ./bin/maelstrom/maelstrom test -w broadcast --bin bin/gossip-glomers --node-count 1 --time-limit 20 --rate 10
 
-rm -r ./log/*.txt
-./bin/maelstrom/maelstrom test -w broadcast --bin bin/maelstrom-broadcast --node-count 5 --time-limit 20 --rate 10
+# ./scripts/cleanup
+# ./bin/maelstrom/maelstrom test -w broadcast --bin bin/gossip-glomers --node-count 5 --time-limit 20 --rate 10
 
-rm -r ./log/*.txt
-./bin/maelstrom/maelstrom test -w broadcast --bin bin/maelstrom-broadcast --node-count 5 --time-limit 20 --rate 10 --nemesis partition
+./scripts/cleanup
+LOG_DIR=$(pwd)/log ./bin/maelstrom/maelstrom test -w broadcast --bin bin/gossip-glomers --node-count 5 --time-limit 20 --rate 10 --nemesis partition

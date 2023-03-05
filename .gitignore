@@ -11,8 +11,14 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# Jepsen & Maelstrom files & folders
 maelstrom/
-bin/maelstrom-*
 store/
 
-*.txt
+# Binaries
+bin/*
+!bin/.gitkeep
+
+# Logs
+log/*
+!bin/.gitkeep
