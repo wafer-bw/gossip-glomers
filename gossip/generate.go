@@ -7,11 +7,7 @@ import (
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
 
-type UUID struct {
-	Node *maelstrom.Node
-}
-
-func (h UUID) Handle(msg maelstrom.Message) error {
+func (h Handler) HandleGenerate(msg maelstrom.Message) error {
 	body := map[string]any{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
@@ -22,8 +18,8 @@ func (h UUID) Handle(msg maelstrom.Message) error {
 		return err
 	}
 
-	body["type"] = "generate_ok"
 	body["id"] = id
+	body["type"] = "generate_ok"
 
 	return h.Node.Reply(msg, body)
 }

@@ -5,22 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 	"golang.org/x/exp/slog"
 )
-
-type Broadcast struct {
-	Node               *maelstrom.Node
-	BroadcastMu        *sync.Mutex
-	TopologyMu         *sync.Mutex
-	Log                *slog.Logger
-	topology           map[string][]string
-	receivedBroadcasts map[float64]struct{}
-}
 
 type topologyBody struct {
 	Type     string              `json:"type"`
@@ -33,7 +23,7 @@ type broadcastMsg struct {
 	body map[string]any
 }
 
-func (h *Broadcast) HandleTopology(msg maelstrom.Message) error {
+func (h *Handler) HandleTopology(msg maelstrom.Message) error {
 	body := topologyBody{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
@@ -50,7 +40,7 @@ func (h *Broadcast) HandleTopology(msg maelstrom.Message) error {
 	return h.Node.Reply(msg, map[string]any{"type": "topology_ok"})
 }
 
-func (h *Broadcast) HandleRead(msg maelstrom.Message) error {
+func (h *Handler) HandleRead(msg maelstrom.Message) error {
 	body := map[string]any{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
@@ -61,7 +51,7 @@ func (h *Broadcast) HandleRead(msg maelstrom.Message) error {
 	return h.Node.Reply(msg, map[string]any{"type": "read_ok", "messages": received})
 }
 
-func (h *Broadcast) HandleBroadcast(msg maelstrom.Message) error {
+func (h *Handler) HandleBroadcast(msg maelstrom.Message) error {
 	body := map[string]any{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
@@ -86,7 +76,7 @@ func (h *Broadcast) HandleBroadcast(msg maelstrom.Message) error {
 	return h.Node.Reply(msg, map[string]any{"type": "broadcast_ok"})
 }
 
-func (h *Broadcast) recordBroadcast(src string, value float64) bool {
+func (h *Handler) recordBroadcast(src string, value float64) bool {
 	h.BroadcastMu.Lock()
 	defer h.BroadcastMu.Unlock()
 
@@ -102,7 +92,7 @@ func (h *Broadcast) recordBroadcast(src string, value float64) bool {
 	return false
 }
 
-func (h *Broadcast) readBroadcastsReceived() []float64 {
+func (h *Handler) readBroadcastsReceived() []float64 {
 	h.BroadcastMu.Lock()
 	defer h.BroadcastMu.Unlock()
 
@@ -114,21 +104,21 @@ func (h *Broadcast) readBroadcastsReceived() []float64 {
 	return received
 }
 
-func (h *Broadcast) recordTopology(topology map[string][]string) {
+func (h *Handler) recordTopology(topology map[string][]string) {
 	h.TopologyMu.Lock()
 	defer h.TopologyMu.Unlock()
 
 	h.topology = topology
 }
 
-func (h *Broadcast) readTopology() map[string][]string {
+func (h *Handler) readTopology() map[string][]string {
 	h.TopologyMu.Lock()
 	defer h.TopologyMu.Unlock()
 
 	return h.topology
 }
 
-func (h *Broadcast) doBroadcasting(msg maelstrom.Message, body map[string]any) {
+func (h *Handler) doBroadcasting(msg maelstrom.Message, body map[string]any) {
 	uid := uuid.New().String()
 	for _, peer := range h.readTopology()[h.Node.ID()] {
 		if peer == msg.Src {
@@ -146,7 +136,7 @@ func (h *Broadcast) doBroadcasting(msg maelstrom.Message, body map[string]any) {
 	}
 }
 
-func (h *Broadcast) rebroadcast(broadcast broadcastMsg) {
+func (h *Handler) rebroadcast(broadcast broadcastMsg) {
 	retry := 0
 	maxRetry := 100
 	for {
