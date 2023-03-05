@@ -8,7 +8,7 @@ import (
 )
 
 func (h Handler) HandleGenerate(msg maelstrom.Message) error {
-	body := map[string]any{}
+	body := messageBody{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
 	}
@@ -18,8 +18,5 @@ func (h Handler) HandleGenerate(msg maelstrom.Message) error {
 		return err
 	}
 
-	body["id"] = id
-	body["type"] = "generate_ok"
-
-	return h.Node.Reply(msg, body)
+	return h.node.Reply(msg, reply(messageBody{ID: id.String()}, MessageTypeGenerateOK, body.MsgID))
 }

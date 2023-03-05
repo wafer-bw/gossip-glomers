@@ -7,18 +7,10 @@ import (
 )
 
 func (h Handler) HandleEcho(msg maelstrom.Message) error {
-	body := map[string]any{}
+	body := messageBody{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
 	}
 
-	id, ok := body["msg_id"]
-	if !ok {
-		return ErrMissingMessageID
-	}
-
-	body["type"] = MessageTypeEchoOK
-	body["in_reply_to"] = id
-
-	return h.Node.Reply(msg, body)
+	return h.node.Reply(msg, reply(messageBody{Echo: body.Echo}, MessageTypeEchoOK, body.MsgID))
 }

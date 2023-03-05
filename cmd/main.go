@@ -1,12 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"gossip-glomers/gossip"
 	"io"
 	"os"
 	"path"
-	"sync"
 
 	"github.com/google/uuid"
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
@@ -19,14 +19,11 @@ const (
 )
 
 func main() {
-	n := maelstrom.NewNode()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	handler := &gossip.Handler{
-		Node:        n,
-		BroadcastMu: &sync.Mutex{},
-		TopologyMu:  &sync.Mutex{},
-		Log:         getLogger(),
-	}
+	n := maelstrom.NewNode()
+	handler := gossip.New(ctx, n, gossip.Options{Log: getLogger()})
 
 	n.Handle(string(gossip.MessageTypeEcho), handler.HandleEcho)
 	n.Handle(string(gossip.MessageTypeGenerate), handler.HandleGenerate)

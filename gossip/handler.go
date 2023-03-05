@@ -1,17 +1,69 @@
 package gossip
 
 import (
+	"context"
+	"io"
 	"sync"
+	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 	"golang.org/x/exp/slog"
 )
 
-type Handler struct {
-	Node               *maelstrom.Node
-	BroadcastMu        *sync.Mutex
-	TopologyMu         *sync.Mutex
+const (
+	DefaultBroadcastQueueSize = 1000
+	DefaultBroadcastTimeout   = 1 * time.Second
+)
+
+type Options struct {
 	Log                *slog.Logger
-	topology           map[string][]string
-	receivedBroadcasts map[float64]struct{}
+	BroadcastQueueSize int
+	BroadcastTimeout   *time.Duration
+}
+
+type Handler struct {
+	node             *maelstrom.Node
+	messagesMu       *sync.Mutex
+	topologyMu       *sync.Mutex
+	log              *slog.Logger
+	broadcastCh      chan broadcastMsg
+	broadcastTimeout time.Duration
+	topology         map[string][]string
+	messages         map[string]int
+}
+
+func New(ctx context.Context, node *maelstrom.Node, opts Options) *Handler {
+	timeout := DefaultBroadcastTimeout
+	if opts.BroadcastTimeout != nil {
+		timeout = *opts.BroadcastTimeout
+	}
+
+	log := slog.New(slog.NewTextHandler(io.Discard))
+	if opts.Log != nil {
+		log = opts.Log
+	}
+
+	broadcastQueueSize := DefaultBroadcastQueueSize
+	if broadcastQueueSize <= 0 {
+		broadcastQueueSize = opts.BroadcastQueueSize
+	}
+
+	handler := &Handler{
+		node:             node,
+		messagesMu:       &sync.Mutex{},
+		topologyMu:       &sync.Mutex{},
+		log:              log,
+		broadcastCh:      make(chan broadcastMsg, broadcastQueueSize),
+		broadcastTimeout: timeout,
+		topology:         map[string][]string{},
+		messages:         map[string]int{},
+	}
+
+	go handler.runBroadcaster(ctx)
+
+	return handler
+}
+
+func (h *Handler) ID() string {
+	return h.node.ID()
 }

@@ -1,8 +1,18 @@
 package gossip
 
 import (
-	"encoding/json"
+	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
+
+// messageBody is an extension of pkg.go.dev/github.com/jepsen-io/maelstrom/demo/go#messageBody.
+type messageBody struct {
+	maelstrom.MessageBody
+	ID       string              `json:"id,omitempty"`
+	Echo     string              `json:"echo,omitempty"`
+	Message  int                 `json:"message,omitempty"`
+	Messages []int               `json:"messages,omitempty"`
+	Topology map[string][]string `json:"topology,omitempty"`
+}
 
 type MessageType string
 
@@ -13,27 +23,23 @@ const (
 	MessageTypeGenerate    MessageType = "generate"
 	MessageTypeGenerateOK  MessageType = "generate_ok"
 	MessageTypeTopology    MessageType = "topology"
+	MessageTypeTopologyOK  MessageType = "topology_ok"
 	MessageTypeRead        MessageType = "read"
+	MessageTypeReadOK      MessageType = "read_ok"
 	MessageTypeBroadcast   MessageType = "broadcast"
 	MessageTypeBroadcastOK MessageType = "broadcast_ok"
+	MessageTypeAdd         MessageType = "add"
+	MessageTypeAddOK       MessageType = "add_ok"
 )
 
-// Get can read a value from the raw message body into the provided destination returning true if the key was found
-// and unmashalling was successful.
-func Get[T any](m json.RawMessage, key string, dst T) bool {
-	body := map[string]json.RawMessage{}
-	if err := json.Unmarshal(m, &body); err != nil {
-		return false
-	}
+type broadcastMsg struct {
+	dst  string      // destination node
+	body messageBody // message body
+}
 
-	v, ok := body[key]
-	if !ok {
-		return false
-	}
-
-	if err := json.Unmarshal(v, &dst); err != nil {
-		return false
-	}
-
-	return true
+func reply(b messageBody, t MessageType, id int) messageBody {
+	b.MsgID = id
+	b.InReplyTo = id
+	b.Type = string(t)
+	return b
 }
