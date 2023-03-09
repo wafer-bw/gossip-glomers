@@ -63,6 +63,7 @@ func New(ctx context.Context, node *maelstrom.Node, opts Options) *Handler {
 	}
 
 	go handler.runBroadcaster(ctx)
+	go handler.initGCounter(ctx)
 
 	return handler
 }
