@@ -5,5 +5,5 @@ go 1.20
 require (
 	github.com/google/uuid v1.3.0
 	github.com/jepsen-io/maelstrom/demo/go v0.0.0-20230228144258-93f15782f204
-	golang.org/x/exp v0.0.0-20230303215020-44a13b063f3e
+	golang.org/x/exp v0.0.0-20230307190834-24139beb5833
 )

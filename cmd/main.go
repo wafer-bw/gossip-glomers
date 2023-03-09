@@ -28,8 +28,14 @@ func main() {
 	n.Handle(string(gossip.MessageTypeEcho), handler.HandleEcho)
 	n.Handle(string(gossip.MessageTypeGenerate), handler.HandleGenerate)
 	n.Handle(string(gossip.MessageTypeTopology), handler.HandleTopology)
-	n.Handle(string(gossip.MessageTypeRead), handler.HandleRead)
 	n.Handle(string(gossip.MessageTypeBroadcast), handler.HandleBroadcast)
+	n.Handle(string(gossip.MessageTypeAdd), handler.HandleAdd)
+
+	if os.Getenv("GCOUNTER") == "true" {
+		n.Handle(string(gossip.MessageTypeRead), handler.HandleReadGCounter)
+	} else {
+		n.Handle(string(gossip.MessageTypeRead), handler.HandleReadBroadcasts)
+	}
 
 	if err := n.Run(); err != nil {
 		panic(err)

@@ -13,6 +13,7 @@ import (
 const (
 	DefaultBroadcastQueueSize = 1000
 	DefaultBroadcastTimeout   = 1 * time.Second
+	GCounterKey               = "gcounter"
 )
 
 type Options struct {
@@ -30,6 +31,7 @@ type Handler struct {
 	broadcastTimeout time.Duration
 	topology         map[string][]string
 	messages         map[string]int
+	kv               *maelstrom.KV
 }
 
 func New(ctx context.Context, node *maelstrom.Node, opts Options) *Handler {
@@ -57,6 +59,7 @@ func New(ctx context.Context, node *maelstrom.Node, opts Options) *Handler {
 		broadcastTimeout: timeout,
 		topology:         map[string][]string{},
 		messages:         map[string]int{},
+		kv:               maelstrom.NewSeqKV(node),
 	}
 
 	go handler.runBroadcaster(ctx)

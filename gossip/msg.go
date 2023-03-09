@@ -11,6 +11,8 @@ type messageBody struct {
 	Echo     string              `json:"echo,omitempty"`
 	Message  int                 `json:"message,omitempty"`
 	Messages []int               `json:"messages,omitempty"`
+	Value    int                 `json:"value,omitempty"`
+	Delta    int                 `json:"delta,omitempty"`
 	Topology map[string][]string `json:"topology,omitempty"`
 }
 
