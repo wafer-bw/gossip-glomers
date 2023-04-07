@@ -1,4 +1,0 @@
-#!/bin/sh
-set -e
-
-go build -o bin/gossip-glomers ./cmd/main.go

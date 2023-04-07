@@ -1,21 +1,5 @@
 package gossip
 
-import (
-	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
-)
-
-// messageBody is an extension of pkg.go.dev/github.com/jepsen-io/maelstrom/demo/go#messageBody.
-type messageBody struct {
-	maelstrom.MessageBody
-	ID       string              `json:"id,omitempty"`
-	Echo     string              `json:"echo,omitempty"`
-	Message  int                 `json:"message,omitempty"`
-	Messages []int               `json:"messages,omitempty"`
-	Value    int                 `json:"value,omitempty"`
-	Delta    int                 `json:"delta,omitempty"`
-	Topology map[string][]string `json:"topology,omitempty"`
-}
-
 type MessageType string
 
 const (
@@ -33,15 +17,3 @@ const (
 	MessageTypeAdd         MessageType = "add"
 	MessageTypeAddOK       MessageType = "add_ok"
 )
-
-type broadcastMsg struct {
-	dst  string      // destination node
-	body messageBody // message body
-}
-
-func reply(b messageBody, t MessageType, id int) messageBody {
-	b.MsgID = id
-	b.InReplyTo = id
-	b.Type = string(t)
-	return b
-}

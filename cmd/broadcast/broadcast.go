@@ -1,22 +1,22 @@
-package gossip
+package main
 
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"gossip-glomers/gossip"
 
 	"github.com/google/uuid"
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
 
-func (h *Handler) HandleBroadcast(msg maelstrom.Message) error {
-	body := messageBody{}
+func (h *Handler) Broadcast(msg maelstrom.Message) error {
+	body := message{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
 	}
 
 	if body.ID == "" {
-		body.ID = uuid.New().String()
+		body.ID = uuid.NewString()
 	}
 
 	if exists := h.saveMessage(body); !exists {
@@ -28,10 +28,18 @@ func (h *Handler) HandleBroadcast(msg maelstrom.Message) error {
 		}
 	}
 
-	return h.node.Reply(msg, reply(messageBody{}, MessageTypeBroadcastOK, body.MsgID))
+	reply := struct {
+		maelstrom.MessageBody
+		Type gossip.MessageType `json:"type"`
+	}{
+		MessageBody: body.MessageBody,
+		Type:        gossip.MessageTypeBroadcastOK,
+	}
+
+	return h.node.Reply(msg, reply)
 }
 
-func (h *Handler) saveMessage(body messageBody) bool {
+func (h *Handler) saveMessage(body message) bool {
 	h.messagesMu.Lock()
 	defer h.messagesMu.Unlock()
 
@@ -54,13 +62,12 @@ func (h *Handler) runBroadcaster(ctx context.Context) {
 	}
 }
 
-func (h *Handler) broadcast(ctx context.Context, dst string, body messageBody) {
+func (h *Handler) broadcast(ctx context.Context, dst string, body message) {
 	ctx, cancel := context.WithTimeout(ctx, h.broadcastTimeout)
 	defer cancel()
 
 	_, err := h.node.SyncRPC(ctx, dst, body)
 	if err != nil {
-		h.log.Info(fmt.Sprintf("%s failed to broadcast to %s", h.ID(), dst))
 		h.broadcastCh <- broadcastMsg{dst: dst, body: body}
 	}
 }

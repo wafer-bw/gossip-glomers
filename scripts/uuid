@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+
+go build -o bin/uuid ./cmd/uuid/*.go
+./bin/maelstrom/maelstrom test -w unique-ids --bin bin/uuid --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition

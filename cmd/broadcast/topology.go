@@ -1,28 +1,29 @@
-package gossip
+package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"gossip-glomers/gossip"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
-	"golang.org/x/exp/slog"
 )
 
-func (h *Handler) HandleTopology(msg maelstrom.Message) error {
-	body := messageBody{}
+func (h *Handler) Topology(msg maelstrom.Message) error {
+	body := message{}
 	if err := json.Unmarshal(msg.Body, &body); err != nil {
 		return err
 	}
 
-	h.log.Info(
-		"topology received",
-		slog.String("nodeID", h.node.ID()),
-		slog.String("topology", fmt.Sprintf("%+v", body.Topology)),
-	)
-
 	h.setTopology(body.Topology)
 
-	return h.node.Reply(msg, reply(messageBody{}, MessageTypeTopologyOK, body.MsgID))
+	reply := struct {
+		maelstrom.MessageBody
+		Type gossip.MessageType `json:"type"`
+	}{
+		MessageBody: body.MessageBody,
+		Type:        gossip.MessageTypeTopologyOK,
+	}
+
+	return h.node.Reply(msg, reply)
 }
 
 func (h *Handler) setTopology(topology map[string][]string) {

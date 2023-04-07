@@ -1,7 +1,6 @@
 #!/bin/sh
 set -e
 
-./scripts/build
 ./scripts/echo
-./scripts/uuids
+./scripts/uuid
 ./scripts/broadcast
