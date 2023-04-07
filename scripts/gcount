@@ -7,3 +7,5 @@ go build -o bin/gcount ./cmd/gcount/*.go
 ./bin/maelstrom/maelstrom test -w g-counter --bin  bin/gcount --node-count 3 --rate 100 --time-limit 20 --nemesis partition
 ./bin/maelstrom/maelstrom test -w g-counter --bin  bin/gcount --node-count 3 --rate 100 --time-limit 20 --nemesis partition
 ./bin/maelstrom/maelstrom test -w g-counter --bin  bin/gcount --node-count 3 --rate 100 --time-limit 20 --nemesis partition
+./bin/maelstrom/maelstrom test -w g-counter --bin  bin/gcount --node-count 3 --rate 100 --time-limit 20 --nemesis partition
+

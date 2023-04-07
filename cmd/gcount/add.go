@@ -28,18 +28,16 @@ func (h *Handler) Add(msg maelstrom.Message) error {
 		return h.node.Reply(msg, reply)
 	}
 
-	// TODO: For some reason this doesn't heal in time all the time
+	// CAS until we succeed
 	for {
-		currentValue, _ := h.keyval.ReadInt(ctx, gCounterKey)
-		newValue := currentValue + body.Delta
-		err := h.keyval.CompareAndSwap(ctx, gCounterKey, currentValue, newValue, false)
-		if c, ok := h.ErrCode(err); err != nil && ok && c == maelstrom.PreconditionFailed {
-			continue
-		} else if err != nil {
+		value, err := h.keyval.ReadInt(ctx, gCounterKey)
+		if err != nil {
 			return err
 		}
 
-		break
+		if err := h.keyval.CompareAndSwap(ctx, gCounterKey, value, value+body.Delta, false); err == nil {
+			break
+		}
 	}
 
 	reply := struct {
